@@ -149,7 +149,14 @@ func (c *Controller) DeleteServiceBroker(w http.ResponseWriter, r *http.Request)
 //
 
 func (c *Controller) ListServiceInstances(w http.ResponseWriter, r *http.Request) {
-	utils.WriteResponse(w, 400, "IMPLEMENT ME")
+	si, err := c.storage.ListServices()
+	if err != nil {
+		fmt.Printf("Couldn't list services: %v\n", err)
+		utils.WriteResponse(w, 400, err)
+		return
+	}
+
+	utils.WriteResponse(w, 200, si)
 }
 
 func (c *Controller) GetServiceInstance(w http.ResponseWriter, r *http.Request) {
@@ -184,6 +191,18 @@ func (c *Controller) CreateServiceInstance(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	siData, err := c.getServiceInstanceByName(req.Name)
+	if err != nil {
+		siData = &model.ServiceInstanceData{Instance: &model.ServiceInstance{
+			ID: uuid.NewV4().String(),
+		}}
+	}
+	existed := (err == nil)
+
+	if siData.Bindings != nil {
+		req.Parameters["bindings"] = siData.Bindings
+	}
+
 	// Then actually make the request to reify the service instance
 	createReq := &ServiceInstanceRequest{
 		ServiceID:  serviceID,
@@ -198,8 +217,6 @@ func (c *Controller) CreateServiceInstance(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	instanceID := uuid.NewV4().String()
-
 	broker, err := c.getBroker(serviceID)
 	if err != nil {
 		fmt.Printf("Error fetching service: %v\n", err)
@@ -207,7 +224,7 @@ func (c *Controller) CreateServiceInstance(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	url := fmt.Sprintf(CREATE_SERVICE_INSTANCE_FMT_STR, broker.BrokerURL, instanceID)
+	url := fmt.Sprintf(CREATE_SERVICE_INSTANCE_FMT_STR, broker.BrokerURL, siData.Instance.ID)
 
 	// TODO: Handle the auth
 	createHttpReq, err := http.NewRequest("PUT", url, bytes.NewReader(jsonBytes))
@@ -225,11 +242,19 @@ func (c *Controller) CreateServiceInstance(w http.ResponseWriter, r *http.Reques
 	si := model.ServiceInstance{}
 	err = utils.ResponseBodyToObject(resp, &si)
 
-	si.ID = instanceID
+	si.Name = req.Name
+	si.ID = siData.Instance.ID
 	si.ServiceID = serviceID
 	si.PlanID = req.ServicePlanGUID
 
-	c.storage.AddService(&si)
+	siData.Instance = &si
+
+	if existed {
+		c.storage.SetService(siData)
+	} else {
+		c.storage.AddService(siData)
+	}
+
 	utils.WriteResponse(w, 200, si)
 }
 
@@ -266,6 +291,26 @@ func (c *Controller) CreateServiceBinding(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// Validate that from service has not been instantiated yet.
+	fromSI, err := c.getServiceInstanceByName(req.FromServiceInstanceName)
+	if err != nil {
+		fromSI = &model.ServiceInstanceData{
+			Instance: &model.ServiceInstance{
+				Name: req.FromServiceInstanceName,
+				ID:   uuid.NewV4().String(),
+			},
+			Bindings: make(map[string]*model.Credential),
+		}
+		c.storage.AddService(fromSI)
+	}
+
+	if fromSI.Instance.ServiceID != "" {
+		err = fmt.Errorf("Cannot bind from instantiated service: %s (%s)", req.FromServiceInstanceName, fromSI.Instance.ID)
+		utils.WriteResponse(w, 400, err)
+		return
+	}
+
+	// Get instance information for service being bound to.
 	si, err := c.storage.GetService(req.ServiceInstanceGUID)
 	if err != nil {
 		fmt.Printf("Error fetching service ID %s: %v\n", req.ServiceInstanceGUID, err)
@@ -275,8 +320,8 @@ func (c *Controller) CreateServiceBinding(w http.ResponseWriter, r *http.Request
 
 	// Then actually make the request to create the binding
 	createReq := &BindingRequest{
-		ServiceID:  si.ServiceID,
-		PlanID:     si.PlanID,
+		ServiceID:  si.Instance.ServiceID,
+		PlanID:     si.Instance.PlanID,
 		Parameters: req.Parameters,
 	}
 
@@ -289,13 +334,13 @@ func (c *Controller) CreateServiceBinding(w http.ResponseWriter, r *http.Request
 
 	bindingID := uuid.NewV4().String()
 
-	broker, err := c.getBroker(si.ServiceID)
+	broker, err := c.getBroker(si.Instance.ServiceID)
 	if err != nil {
 		fmt.Printf("Error fetching service: %v\n", err)
 		utils.WriteResponse(w, 400, err)
 		return
 	}
-	url := fmt.Sprintf(BIND_FMT_STR, broker.BrokerURL, si.ID, bindingID)
+	url := fmt.Sprintf(BIND_FMT_STR, broker.BrokerURL, si.Instance.ID, bindingID)
 
 	// TODO: Handle the auth
 	createHttpReq, err := http.NewRequest("PUT", url, bytes.NewReader(jsonBytes))
@@ -320,12 +365,24 @@ func (c *Controller) CreateServiceBinding(w http.ResponseWriter, r *http.Request
 	// TODO: get broker to actually return these values as part of response.
 	sb := model.ServiceBinding{
 		ID:                bindingID,
-		ServiceInstanceID: si.ID,
-		ServiceID:         si.ServiceID,
-		ServicePlanID:     si.PlanID,
+		ServiceInstanceID: si.Instance.ID,
+		ServiceID:         si.Instance.ServiceID,
+		ServicePlanID:     si.Instance.PlanID,
 	}
 
 	c.storage.AddServiceBinding(&sb, &sbr.Credentials)
+
+	// Set binding credential information in from service instance.
+	serviceName, err := c.getServiceName(si.Instance.ID)
+	if err != nil {
+		fmt.Printf("Error retrieving service name: %v\n", err)
+		utils.WriteResponse(w, 400, err)
+		return
+	}
+
+	fromSI.Bindings[serviceName] = &sbr.Credentials
+	c.storage.SetService(fromSI)
+
 	utils.WriteResponse(w, 200, sb)
 }
 
@@ -350,6 +407,25 @@ func (c *Controller) getServiceID(planID string) (string, error) {
 	return "", fmt.Errorf("Plan ID %s was not found", planID)
 }
 
+func (c *Controller) getServiceName(instanceId string) (string, error) {
+	si, err := c.storage.GetService(instanceId)
+	if err != nil {
+		return "", err
+	}
+
+	i, err := c.storage.GetInventory()
+	if err != nil {
+		return "", err
+	}
+
+	for _, s := range i.Services {
+		if strings.Compare(si.Instance.ServiceID, s.ID) == 0 {
+			return s.Name, nil
+		}
+	}
+
+	return "", fmt.Errorf("Service ID %s was not found for instance %s", si.Instance.ServiceID, instanceId)
+}
 func (c *Controller) getBroker(serviceID string) (*model.ServiceBroker, error) {
 	broker, err := c.storage.GetBrokerByService(serviceID)
 	if err != nil {
@@ -357,6 +433,21 @@ func (c *Controller) getBroker(serviceID string) (*model.ServiceBroker, error) {
 	}
 
 	return broker, nil
+}
+
+func (c *Controller) getServiceInstanceByName(name string) (*model.ServiceInstanceData, error) {
+	siList, err := c.storage.ListServices()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, si := range siList {
+		if strings.Compare(si.Instance.Name, name) == 0 {
+			return si, nil
+		}
+	}
+
+	return nil, fmt.Errorf("Service instance %s was not found", name)
 }
 
 // This is what we get sent to us
@@ -367,8 +458,9 @@ type CreateServiceInstanceRequest struct {
 }
 
 type CreateServiceBindingRequest struct {
-	ServiceInstanceGUID string                 `json:"service_instance_guid"`
-	Parameters          map[string]interface{} `json:"parameters,omitempty"`
+	FromServiceInstanceName string                 `json:"from_service_instance_name"`
+	ServiceInstanceGUID     string                 `json:"service_instance_guid"`
+	Parameters              map[string]interface{} `json:"parameters,omitempty"`
 }
 
 type ServiceInstanceRequest struct {

@@ -161,15 +161,19 @@ func (kss *K8sServiceStorage) ServiceExists(id string) bool {
 	return false
 }
 
-func (kss *K8sServiceStorage) ListServices() ([]*model.ServiceInstance, error) {
+func (kss *K8sServiceStorage) ListServices() ([]*model.ServiceInstanceData, error) {
 	return nil, fmt.Errorf("Not implemented yet")
 }
 
-func (kss *K8sServiceStorage) GetService(id string) (*model.ServiceInstance, error) {
+func (kss *K8sServiceStorage) GetService(id string) (*model.ServiceInstanceData, error) {
 	return nil, fmt.Errorf("Not implemented yet")
 }
 
-func (kss *K8sServiceStorage) AddService(si *model.ServiceInstance) error {
+func (kss *K8sServiceStorage) AddService(si *model.ServiceInstanceData) error {
+	return fmt.Errorf("Not implemented yet")
+}
+
+func (kss *K8sServiceStorage) SetService(si *model.ServiceInstanceData) error {
 	return fmt.Errorf("Not implemented yet")
 }
 
