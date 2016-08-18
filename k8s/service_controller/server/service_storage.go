@@ -28,7 +28,7 @@ type Instancer interface {
 // bindings.
 type Binder interface {
 	ListServiceBindings() ([]*model.ServiceBinding, error)
-	GetServiceBinding(string) (*model.Credential, error)
+	GetServiceBinding(string) (*model.ServiceBinding, error)
 	AddServiceBinding(*model.ServiceBinding, *model.Credential) error
 	DeleteServiceBinding(string) error
 }

@@ -63,7 +63,7 @@ func (s *NilServiceStorage) ListServiceBindings() ([]*model.ServiceBinding, erro
 	return nil, nil
 }
 
-func (s *NilServiceStorage) GetServiceBinding(id string) (*model.Credential, error) {
+func (s *NilServiceStorage) GetServiceBinding(id string) (*model.ServiceBinding, error) {
 	return nil, nil
 }
 

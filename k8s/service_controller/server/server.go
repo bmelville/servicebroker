@@ -24,7 +24,8 @@ func (s *Server) Start() {
 
 	// TODO: the actual inventory API should be /v2/services[/...] and
 	// /v2/service_plans[/...].
-	router.HandleFunc("/v2/inventory", s.controller.Inventory).Methods("GET")
+	router.HandleFunc("/v2/service_plans", s.controller.Inventory).Methods("GET")
+	router.HandleFunc("/v2/service_plans/{plan_id}", s.controller.GetServicePlan).Methods("GET")
 
 	// Broker related stuff
 	router.HandleFunc("/v2/service_brokers", s.controller.ListServiceBrokers).Methods("GET")
@@ -41,9 +42,9 @@ func (s *Server) Start() {
 	// TODO: implement list service bindings for this service instance.
 	// router.HandleFunc("/v2/service_instances/{service_id}/service_bindings", s.controller.ListServiceInstanceBindings).Methods("GET")
 
-	router.HandleFunc("/v2service_bindings", s.controller.ListServiceBindings).Methods("GET")
+	router.HandleFunc("/v2/service_bindings", s.controller.ListServiceBindings).Methods("GET")
 	router.HandleFunc("/v2/service_bindings", s.controller.CreateServiceBinding).Methods("POST")
-	router.HandleFunc("/v2service_bindings/{binding_id}", s.controller.GetServiceBinding).Methods("GET")
+	router.HandleFunc("/v2/service_bindings/{binding_id}", s.controller.GetServiceBinding).Methods("GET")
 	router.HandleFunc("/v2/service_bindings/{binding_id}", s.controller.DeleteServiceBinding).Methods("DELETE")
 
 	http.Handle("/", router)

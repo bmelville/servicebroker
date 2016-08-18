@@ -124,17 +124,20 @@ func (s *InMemServiceStorage) DeleteService(id string) error {
 }
 
 func (s *InMemServiceStorage) ListServiceBindings() ([]*model.ServiceBinding, error) {
-	return []*model.ServiceBinding{}, fmt.Errorf("Not implemented yet")
+	bindings := []*model.ServiceBinding{}
+	for _, v := range s.bindings {
+		bindings = append(bindings, v.Binding)
+	}
+	return bindings, nil
 }
 
-func (s *InMemServiceStorage) GetServiceBinding(id string) (*model.Credential, error) {
+func (s *InMemServiceStorage) GetServiceBinding(id string) (*model.ServiceBinding, error) {
 	b, ok := s.bindings[id]
 	if !ok {
-		// TODO: this should return binding rather than credential.
-		return &model.Credential{}, fmt.Errorf("Binding %s does not exist", id)
+		return &model.ServiceBinding{}, fmt.Errorf("Binding %s does not exist", id)
 	}
 
-	return b.Credential, nil
+	return b.Binding, nil
 }
 
 func (s *InMemServiceStorage) AddServiceBinding(binding *model.ServiceBinding, cred *model.Credential) error {

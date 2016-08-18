@@ -45,6 +45,28 @@ func (c *Controller) Inventory(w http.ResponseWriter, r *http.Request) {
 	utils.WriteResponse(w, 200, i)
 }
 
+func (c *Controller) GetServicePlan(w http.ResponseWriter, r *http.Request) {
+	id := utils.ExtractVarFromRequest(r, "plan_id")
+
+	i, err := c.storage.GetInventory()
+	if err != nil {
+		fmt.Printf("Got Error: %#v\n", err)
+		utils.WriteResponse(w, 400, err)
+		return
+	}
+
+	for _, s := range i.Services {
+		for _, p := range s.Plans {
+			if strings.Compare(id, p.ID) == 0 {
+				utils.WriteResponse(w, 200, p)
+				return
+			}
+		}
+	}
+
+	utils.WriteResponse(w, 404, fmt.Errorf("Not found"))
+}
+
 //
 // Service Broker.
 //
@@ -156,7 +178,12 @@ func (c *Controller) ListServiceInstances(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	utils.WriteResponse(w, 200, si)
+	var instances []*model.ServiceInstance
+	for _, i := range si {
+		instances = append(instances, i.Instance)
+	}
+
+	utils.WriteResponse(w, 200, instances)
 }
 
 func (c *Controller) GetServiceInstance(w http.ResponseWriter, r *http.Request) {
@@ -170,7 +197,7 @@ func (c *Controller) GetServiceInstance(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	utils.WriteResponse(w, 200, si)
+	utils.WriteResponse(w, 200, si.Instance)
 }
 
 func (c *Controller) CreateServiceInstance(w http.ResponseWriter, r *http.Request) {
@@ -263,7 +290,13 @@ func (c *Controller) DeleteServiceInstance(w http.ResponseWriter, r *http.Reques
 }
 
 func (c *Controller) ListServiceBindings(w http.ResponseWriter, r *http.Request) {
-	utils.WriteResponse(w, 400, "IMPLEMENT ME")
+	l, err := c.storage.ListServiceBindings()
+	if err != nil {
+		fmt.Printf("Got Error: %#v\n", err)
+		utils.WriteResponse(w, 400, err)
+		return
+	}
+	utils.WriteResponse(w, 200, l)
 }
 
 func (c *Controller) GetServiceBinding(w http.ResponseWriter, r *http.Request) {
@@ -277,7 +310,7 @@ func (c *Controller) GetServiceBinding(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	utils.WriteResponse(w, 400, b)
+	utils.WriteResponse(w, 200, b)
 }
 
 func (c *Controller) CreateServiceBinding(w http.ResponseWriter, r *http.Request) {
@@ -364,10 +397,10 @@ func (c *Controller) CreateServiceBinding(w http.ResponseWriter, r *http.Request
 
 	// TODO: get broker to actually return these values as part of response.
 	sb := model.ServiceBinding{
-		ID:                bindingID,
-		ServiceInstanceID: si.Instance.ID,
-		ServiceID:         si.Instance.ServiceID,
-		ServicePlanID:     si.Instance.PlanID,
+		ID: bindingID,
+		FromServiceInstanceName: req.FromServiceInstanceName,
+		ServiceInstanceGUID:     req.ServiceInstanceGUID,
+		Parameters:              req.Parameters,
 	}
 
 	c.storage.AddServiceBinding(&sb, &sbr.Credentials)
@@ -463,6 +496,7 @@ type CreateServiceBindingRequest struct {
 	Parameters              map[string]interface{} `json:"parameters,omitempty"`
 }
 
+// Requests to the service broker
 type ServiceInstanceRequest struct {
 	OrgID             string                 `json:"organization_guid,omitempty"`
 	PlanID            string                 `json:"plan_id,omitempty"`

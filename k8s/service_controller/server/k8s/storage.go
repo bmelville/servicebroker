@@ -185,7 +185,7 @@ func (kss *K8sServiceStorage) ListServiceBindings() ([]*model.ServiceBinding, er
 	return nil, fmt.Errorf("Not implemented yet")
 }
 
-func (kss *K8sServiceStorage) GetServiceBinding(id string) (*model.Credential, error) {
+func (kss *K8sServiceStorage) GetServiceBinding(id string) (*model.ServiceBinding, error) {
 	return nil, fmt.Errorf("Not implemented yet")
 }
 
